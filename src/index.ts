@@ -20,14 +20,10 @@ const signer = createSigner(WALLET_KEY);
 const encryptionKey = getEncryptionKeyFromHex(ENCRYPTION_KEY);
 
 /* Set the environment to local, dev or production */
-// Check for environment-specific XMTP environment variables
-let env: XmtpEnv = "production"; // Default to production
-
-if (process.env.XMTP_ENV_PROD !== undefined) {
-  env = process.env.XMTP_ENV_PROD as XmtpEnv;
-} else if (process.env.XMTP_ENV !== undefined) {
-  env = process.env.XMTP_ENV as XmtpEnv;
-}
+const env: XmtpEnv =
+  process.env.XMTP_ENV !== undefined
+    ? (process.env.XMTP_ENV as XmtpEnv)
+    : "production";
 
 // Array of possible responses
 const responses = [
