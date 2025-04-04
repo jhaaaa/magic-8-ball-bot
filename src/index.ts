@@ -16,7 +16,7 @@ if (!ENCRYPTION_KEY) {
 }
 
 /* Create the signer using viem and parse the encryption key for the local db */
-const signer = createSigner(WALLET_KEY);
+const signer = createSigner(WALLET_KEY as `0x${string}`);
 const encryptionKey = getEncryptionKeyFromHex(ENCRYPTION_KEY);
 
 /* Set the environment to local, dev or production */
