@@ -52,9 +52,29 @@ const responses = [
 // Welcome message for new conversations
 const welcomeMessage = `🔮🎱 Magic 8 Ball Bot 🎱🔮
 
-Ask me a yes/no question and I will reveal your destiny!
+Ask a yes/no question. Get a cosmic answer. ✨  
 
-Ask your question now...`;
+Ask your question now...
+
+Type /help to learn more`;
+
+// Help message
+const helpMessage = `🔮🎱 Magic 8 Ball Bot Help 🎱🔮
+
+Send me a yes/no question. Get a cosmic answer. ✨
+
+About me:
+- I reply to a message with a randomly selected answer
+- I reply to /help with this help message
+- I can't initiate conversations
+- I work in apps built with XMTP: https://xmtp.org
+
+Verify my identity:
+- ENS: magic🎱.eth
+- Address: 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266  
+- GitHub: https://github.com/jhaaaa/magic-8-ball-bot 
+
+May serendipity be ever in your favor 🌈`;
 
 // Function to get a random response
 function getRandomResponse(): string {
@@ -64,11 +84,13 @@ function getRandomResponse(): string {
 
 // Function to format the response like a Magic 8 Ball
 function formatMagic8BallResponse(question: string, answer: string): string {
-  return `🔮🎱 Magic 8 Ball 🎱🔮
+  return `🔮🎱 Magic 8 Ball Bot 🎱🔮
 
-Answer: ${answer}
+🪄 Answer: ${answer}
 
-Ask another question to continue...`;
+Ask another question to continue...
+
+Type /help for more mystical guidance`;
 }
 
 async function main() {
@@ -131,17 +153,23 @@ async function main() {
           console.log(`Sending welcome message to ${addressFromInboxId}...`);
           await conversation.send(welcomeMessage);
         } else {
-          // For subsequent messages, send the Magic 8 Ball response
-          const randomResponse = getRandomResponse();
-          const formattedResponse = formatMagic8BallResponse(
-            messageContent,
-            randomResponse,
-          );
+          // Check for /help command
+          if (messageContent.toLowerCase().trim() === '/help') {
+            console.log(`Sending help message to ${addressFromInboxId}...`);
+            await conversation.send(helpMessage);
+          } else {
+            // For regular questions, send the Magic 8 Ball response
+            const randomResponse = getRandomResponse();
+            const formattedResponse = formatMagic8BallResponse(
+              messageContent,
+              randomResponse,
+            );
 
-          console.log(
-            `Sending Magic 8 Ball response to ${addressFromInboxId}...`,
-          );
-          await conversation.send(formattedResponse);
+            console.log(
+              `Sending Magic 8 Ball response to ${addressFromInboxId}...`,
+            );
+            await conversation.send(formattedResponse);
+          }
         }
 
         console.log("Waiting for questions...");
