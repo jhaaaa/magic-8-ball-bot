@@ -1,25 +1,30 @@
 FROM node:20-slim
 
-WORKDIR /app
-
-# Install curl for network testing
+# Install curl for healthcheck
 RUN apt-get update && apt-get install -y curl
 
-# Copy TypeScript configuration
-COPY tsconfig.json ./
+# Set working directory
+WORKDIR /app
+
+# Enable Corepack and install the correct Yarn version
+RUN corepack enable && corepack prepare yarn@4.6.0 --activate
+
+# Copy package files
+COPY package.json yarn.lock ./
 
 # Copy source files maintaining the workspace structure
-COPY examples/magic8ballbot/index.ts ./examples/magic8ballbot/
+COPY src/index.ts ./src/
 COPY helpers/index.ts ./helpers/
+COPY tsconfig.json ./
 
 # Install dependencies
-RUN npm init -y && \
-    npm install @xmtp/node-sdk@1.0.5 dotenv@^16.4.5 uint8arrays@3.1.0 viem@^2.22.17 tsx@^4.19.2
+RUN yarn install
 
-# Debug environment and network, then start the application
-CMD echo "Environment variables present:" && \
-    env | grep -E "WALLET_KEY|ENCRYPTION_KEY|XMTP_ENV" | cut -d= -f1 && \
-    echo "\nTesting network connectivity..." && \
-    curl -v https://dev.xmtp.network && \
-    echo "\nStarting application..." && \
-    npx tsx examples/magic8ballbot/index.ts 
+# Build the project
+RUN yarn build
+
+# Expose the port the app runs on
+EXPOSE 3000
+
+# Command to run the application
+CMD ["yarn", "start"] 
