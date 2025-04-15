@@ -26,6 +26,10 @@ const env: XmtpEnv =
     ? (process.env.XMTP_ENV as XmtpEnv)
     : "production";
 
+// Set up the database directory
+const dbDir = process.env.XMTP_DB_DIR || '.';
+console.log(`Using XMTP database directory: ${dbDir}`);
+
 // Array of possible responses
 const responses = [
   "It is certain.",
@@ -98,7 +102,10 @@ async function main() {
   try {
     console.log(`Creating client on the '${env}' network...`);
     /* Initialize the xmtp client */
-    const client = await Client.create(signer, encryptionKey, { env });
+    const client = await Client.create(signer, encryptionKey, { 
+      env,
+      dbDir // Add the database directory configuration
+    });
 
     console.log("Syncing conversations...");
     /* Sync the conversations from the network to update the local db */
@@ -131,13 +138,32 @@ async function main() {
         );
 
         /* Get the conversation by id */
-        const conversation = client.conversations.getDmByInboxId(
+        let conversation = client.conversations.getDmByInboxId(
           message.senderInboxId,
         );
 
         if (!conversation) {
-          console.log("Unable to find conversation, skipping");
-          continue;
+          console.log("Conversation not found in local database, creating new one and syncing...");
+          try {
+            // First sync to get any existing conversation history
+            await client.conversations.sync();
+            
+            // Try to get the conversation again after sync
+            conversation = client.conversations.getDmByInboxId(
+              message.senderInboxId,
+            );
+            
+            // If still not found, create a new conversation
+            if (!conversation) {
+              console.log("Creating new conversation after sync...");
+              conversation = await client.conversations.newConversation(message.senderInboxId);
+            }
+            
+            console.log("Successfully handled conversation setup");
+          } catch (error) {
+            console.error("Error handling conversation setup:", error);
+            continue;
+          }
         }
 
         const inboxState = await client.preferences.inboxStateFromInboxIds([
