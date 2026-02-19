@@ -1,0 +1,4 @@
+node_modules
+*.db3*
+old_db_backup
+.env

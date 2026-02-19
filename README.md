@@ -1,6 +1,6 @@
 # Message the Mysterious Magic 🎱 Bot
 
-Send me a message at `magic🎱.eth` (0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266) using an app built with [XMTP](https://docs.xmtp.org/). 
+Send me a message at `magic🎱.eth` (0x458dd9C5bf4d4E8f80Ba88923E3b94FD028CEe38) using an app built with [XMTP](https://docs.xmtp.org/). 
 
 For example, try the [xmtp.chat](https://xmtp.chat/) developer tool.
 
