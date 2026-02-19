@@ -1,231 +1,83 @@
 import "dotenv/config";
-import { createSigner, getEncryptionKeyFromHex } from "@helpers";
-import { Client, type XmtpEnv } from "@xmtp/node-sdk";
+import Anthropic from "@anthropic-ai/sdk";
+import { Agent, CommandRouter } from "@xmtp/agent-sdk";
 
-/* Get the wallet key associated to the public key of
- * the agent and the encryption key for the local db
- * that stores your agent's messages */
-const { WALLET_KEY, ENCRYPTION_KEY } = process.env;
+// ---------------------------------------------------------------------------
+// 1. THE BRAIN — Claude API with a Magic 8 Ball persona
+// ---------------------------------------------------------------------------
 
-if (!WALLET_KEY) {
-  throw new Error("WALLET_KEY must be set");
+const anthropic = new Anthropic();
+
+const SYSTEM_PROMPT = `You are the Mysterious Magic 8 Ball — an ancient, all-knowing oracle that answers yes/no questions.
+
+Rules:
+- Keep responses to 1-2 sentences maximum
+- Be cryptic, mystical, and dramatic
+- Sometimes be playful or ominously vague
+- If the question isn't a yes/no question, gently redirect: "The spirits require a yes or no question..."
+- Never break character
+- Never mention that you are an AI or Claude`;
+
+async function askTheBall(question: string): Promise<string> {
+  const response = await anthropic.messages.create({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 150,
+    system: SYSTEM_PROMPT,
+    messages: [{ role: "user", content: question }],
+  });
+
+  const block = response.content[0];
+  return block.type === "text" ? block.text : "The spirits are silent...";
 }
 
-if (!ENCRYPTION_KEY) {
-  throw new Error("ENCRYPTION_KEY must be set");
-}
+// ---------------------------------------------------------------------------
+// 2. THE MESSAGING FRAMEWORK — XMTP Agent SDK
+// ---------------------------------------------------------------------------
 
-/* Create the signer using viem and parse the encryption key for the local db */
-const walletKey = (WALLET_KEY.startsWith('0x') ? WALLET_KEY : `0x${WALLET_KEY}`) as `0x${string}`;
-const signer = createSigner(walletKey);
-const encryptionKey = getEncryptionKeyFromHex(ENCRYPTION_KEY);
+// createFromEnv() reads XMTP_WALLET_KEY, XMTP_DB_ENCRYPTION_KEY, and XMTP_ENV
+// from process.env and handles all key format normalization automatically.
+const agent = await Agent.createFromEnv();
 
-/* Set the environment to local, dev or production */
-const env: XmtpEnv =
-  process.env.XMTP_ENV !== undefined
-    ? (process.env.XMTP_ENV as XmtpEnv)
-    : "production";
+// CommandRouter middleware handles slash commands so we don't have to
+const router = new CommandRouter({ helpCommand: "/help" });
 
-// Set up the database directory
-const dbDir = process.env.XMTP_DB_DIR || '.';
-console.log(`Using XMTP database directory: ${dbDir}`);
+router.command("/help", "Show help message", async (ctx) => {
+  await ctx.conversation.sendText(
+    `🔮 Magic 8 Ball 🔮
 
-// Array of possible responses
-const responses = [
-  "It is certain.",
-  "It is decidedly so.",
-  "Without a doubt.",
-  "Yes - definitely.",
-  "You may rely on it.",
-  "As I see it, yes.",
-  "Most likely.",
-  "Outlook good.",
-  "Yes.",
-  "Signs point to yes.",
-  "Reply hazy, try again.",
-  "Ask again later.",
-  "Better not tell you now.",
-  "Cannot predict now.",
-  "Concentrate and ask again.",
-  "Don't count on it.",
-  "My reply is no.",
-  "My sources say no.",
-  "Outlook not so good.",
-  "Very doubtful.",
-];
+Ask me a yes/no question and I will consult the spirits.
 
-// Welcome message for new conversations
-const welcomeMessage = `🔮🎱 Magic 8 Ball Bot 🎱🔮
+Commands:
+  /help — this message
 
-Ask a yes/no question. Get a cosmic answer. ✨  
-
-Ask your question now...
-
-Type /help to learn more`;
-
-// Help message
-const helpMessage = `🔮🎱 Magic 8 Ball Bot Help 🎱🔮
-
-Send me a yes/no question. Get a cosmic answer. ✨
-
-About me:
-- I reply to a message with a randomly selected answer
-- I reply to /help with this help message
-- I can't initiate conversations
-- I work in apps built with XMTP: https://xmtp.org
-
-Verify my identity:
-- ENS: magic🎱.eth
-- Address: 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266  
-- GitHub: https://github.com/jhaaaa/magic-8-ball-bot 
-
-May serendipity be ever in your favor 🌈`;
-
-// Function to get a random response
-function getRandomResponse(): string {
-  const randomIndex = Math.floor(Math.random() * responses.length);
-  return responses[randomIndex];
-}
-
-// Function to format the response like a Magic 8 Ball
-function formatMagic8BallResponse(question: string, answer: string): string {
-  return `🔮🎱 Magic 8 Ball Bot 🎱🔮
-
-🪄 Answer: ${answer}
-
-Ask another question to continue...
-
-Type /help for more mystical guidance`;
-}
-
-async function main() {
-  try {
-    console.log(`Creating client on the '${env}' network...`);
-    /* Initialize the xmtp client */
-    const client = await Client.create(signer, encryptionKey, { 
-      env,
-      dbDir // Add the database directory configuration
-    });
-
-    console.log("Syncing conversations...");
-    /* Sync the conversations from the network to update the local db */
-    await client.conversations.sync();
-
-    const identifier = await signer.getIdentifier();
-    const address = identifier.identifier;
-    console.log(
-      `Magic 8 Ball Bot initialized on ${address}\nSend a message on http://xmtp.chat/dm/${address}?env=${env}`,
-    );
-
-    // Remove the open URL part since we're deploying
-    console.log("Waiting for questions...");
-    const stream = client.conversations.streamAllMessages();
-
-    for await (const message of await stream) {
-      try {
-        /* Ignore messages from the same agent or non-text messages */
-        if (
-          message?.senderInboxId.toLowerCase() ===
-            client.inboxId.toLowerCase() ||
-          message?.contentType?.typeId !== "text"
-        ) {
-          continue;
-        }
-
-        const messageContent = message.content as string;
-        console.log(
-          `Received message: ${messageContent} by ${message.senderInboxId}`,
-        );
-
-        /* Get the conversation by id */
-        let conversation = client.conversations.getDmByInboxId(
-          message.senderInboxId,
-        );
-
-        if (!conversation) {
-          console.log("Conversation not found in local database, creating new one and syncing...");
-          try {
-            // First sync to get any existing conversation history
-            await client.conversations.sync();
-            
-            // Try to get the conversation again after sync
-            conversation = client.conversations.getDmByInboxId(
-              message.senderInboxId,
-            );
-            
-            // If still not found, create a new conversation
-            if (!conversation) {
-              console.log("Creating new conversation after sync...");
-              conversation = await client.conversations.newConversation(message.senderInboxId);
-            }
-            
-            console.log("Successfully handled conversation setup");
-          } catch (error) {
-            console.error("Error handling conversation setup:", error);
-            continue;
-          }
-        }
-
-        const inboxState = await client.preferences.inboxStateFromInboxIds([
-          message.senderInboxId,
-        ]);
-        const addressFromInboxId = inboxState[0].identifiers[0].identifier;
-
-        // Check if this is the first message in the conversation
-        const messages = await conversation.messages();
-        const isFirstMessage = messages.length <= 1;
-
-        if (isFirstMessage) {
-          // For first messages, send the welcome message
-          console.log(`Sending welcome message to ${addressFromInboxId}...`);
-          await conversation.send(welcomeMessage);
-        } else {
-          // Check for /help command
-          if (messageContent.toLowerCase().trim() === '/help') {
-            console.log(`Sending help message to ${addressFromInboxId}...`);
-            await conversation.send(helpMessage);
-          } else {
-            // For regular questions, send the Magic 8 Ball response
-            const randomResponse = getRandomResponse();
-            const formattedResponse = formatMagic8BallResponse(
-              messageContent,
-              randomResponse,
-            );
-
-            console.log(
-              `Sending Magic 8 Ball response to ${addressFromInboxId}...`,
-            );
-            await conversation.send(formattedResponse);
-          }
-        }
-
-        console.log("Waiting for questions...");
-      } catch (error) {
-        console.error("Error processing message:", error);
-        // Continue processing other messages even if one fails
-      }
-    }
-  } catch (error) {
-    console.error("Fatal error in main loop:", error);
-    process.exit(1);
-  }
-}
-
-// Add process signal handlers for graceful shutdown
-process.on("SIGINT", () => {
-  console.log("Received SIGINT. Shutting down gracefully...");
-  process.exit(0);
-});
-
-process.on("SIGTERM", () => {
-  console.log("Received SIGTERM. Shutting down gracefully...");
-  process.exit(0);
-});
-
-main().catch((error: unknown) => {
-  console.error(
-    "Unhandled error:",
-    error instanceof Error ? error.message : String(error),
+Powered by XMTP + Claude`,
   );
-  process.exit(1);
 });
+
+agent.use(router.middleware());
+
+// ---------------------------------------------------------------------------
+// 3. THE GLUE — Connect incoming messages to the brain, send responses back
+// ---------------------------------------------------------------------------
+
+agent.on("text", async (ctx) => {
+  const question = ctx.message.content;
+  console.log(`Question: "${question}"`);
+
+  const answer = await askTheBall(question);
+  console.log(`Answer: "${answer}"`);
+
+  await ctx.conversation.sendText(`🔮 ${answer}`);
+});
+
+agent.on("start", () => {
+  console.log(`🔮 Magic 8 Ball is online`);
+  console.log(`   Address: ${agent.address}`);
+  console.log(`   Chat: http://xmtp.chat/dm/${agent.address}`);
+});
+
+agent.on("unhandledError", (error) => {
+  console.error("Error:", error);
+});
+
+await agent.start();
