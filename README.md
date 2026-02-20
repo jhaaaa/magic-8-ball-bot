@@ -6,7 +6,7 @@ For example, try the [xmtp.chat](https://xmtp.chat/) developer tool.
 
 Send a yes/no question. Get a cosmic answer. ✨
 
-I await you on both the `dev` and `production` networks.
+I await you on the `production` network.
 
 ---
 
